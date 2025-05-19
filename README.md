@@ -21,6 +21,6 @@ bash run.sh
 
 ## Citing
 
-If you find this work is helpful to your research, please consider citing our paper:
+If you find this work is helpful to your research, please consider citing our paper
 
 
