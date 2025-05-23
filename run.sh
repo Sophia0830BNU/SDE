@@ -1,7 +1,7 @@
 #!/bin/bash
 
 dataset="MUTAG"
-model="PairNorm"
+model="SDE"
 log_file="${dataset}_${model}.txt"
 
 nohup python3 -u main_10times.py \
