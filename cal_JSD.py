@@ -53,19 +53,21 @@ def cal_JSD(features, graphs):
 def main():
     parser = argparse.ArgumentParser(description='PyTorch graph convolution neural net for whole-graph classification')
     parser.add_argument('--dataset', type=str, default="MUTAG", help='name of dataset (default: MUTAG)')
+    parser.add_argument('--model', type=str, default="SDE", choices = ("SDE", "ResNet", "DropEdge", "PairNorm", "TGS", "ContraNorm"), help='name of model')
     parser.add_argument('--device', type=int, default=0, help="gpu id of using if any (default: 0)")
+    parser.add_argument('--k', type=int, default=1, help="the size of expansion subgraph")
+    parser.add_argument('--top_percentage', type=float, default=0.1, help='top percentage for selecting nodes')
     parser.add_argument('--batch_size', type=int, default=32, help="input batch size for training (default: 32)")
     parser.add_argument('--iters_per_epoch', type=int, default=50, help="number of iterations per each epoch (default: 50)")
     parser.add_argument('--epochs', type=int, default=350, help='number of epochs to train (default: 350)')
     parser.add_argument('--lr', type=float, default=0.01, help='leanring rate(default: 0.01)')
     parser.add_argument('--num_layers', type=int, default=5, help='number of layers INCLUDING the input one (default: 5)')
     parser.add_argument('--num_mlp_layers', type=int, default=2, help='number of layers for MLP EXCLUDING the input one (default:2). 1 means linear model.')
+    parser.add_argument('--num_views', type=int, default=5, help='number of views (default: 5)')
     parser.add_argument('--hidden_dim', type=int, default=64, help='number of hidden units (default: 64)')
     parser.add_argument('--final_dropout', type=float, default=0.5, help='final layer dropout (default: 0.5)')
     parser.add_argument('--alpha', type=float, default=10, help='loss regulation (default: 0.5)')
     parser.add_argument('--max_iters', type=int, default=100, help='max k-means cluster iterations(default: 100)')
-    parser.add_argument('--seed', type=int, default=0,
-                        help='random seed for splitting the dataset into 10 (default: 0)')
     parser.add_argument('--graph_pooling_type', type=str, default='sum', choices = ['sum', 'average'], help='Pooling for over nodes in a graph: sum or average')
     parser.add_argument('--neighbor_pooling_type', type=str, default="sum", choices=['sum', 'average', 'max'], help='Pooling for over neighboring nodes: sum, average or max')
     parser.add_argument('--learn_eps', action="store_true", help="Whether to learn the epison weighting for the center nodes. Does not affect training accuracy though") 
@@ -83,15 +85,15 @@ def main():
     for k in args.__dict__:
         print(k +":" +str(args.__dict__[k]))
 
-    graphs, num_classes = load_data(args.dataset, args.degree_as_tag)
+    graphs, num_classes = load_data(args.dataset, args.degree_as_tag, Truss_process, Entropy_process, args.k)
 
     ave_train_fold = []
     ave_test_fold = []
     fold_idx = 0
     train_graphs, test_graphs = seperate_data(graphs, args.seed, fold_idx)
-
-    #model = GraphCNN(args.num_layers, args.num_mlp_layers, train_graphs[0].node_features.shape[1], args.hidden_dim, num_classes, args.final_dropout, args.learn_eps, args.graph_pooling_type, args.neighbor_pooling_type, device).to(device)
-    model = GraphCNN(args.num_layers, args.num_mlp_layers, train_graphs[0].node_features.shape[1], args.hidden_dim, num_classes, args.final_dropout, args.learn_eps, args.graph_pooling_type, args.neighbor_pooling_type, device).to(device)
+    
+    
+    model = GraphCNN(args.model, args.num_layers, args.num_mlp_layers,  train_graphs[0].node_features.shape[1], args.hidden_dim, num_classes, args.final_dropout, args.learn_eps, args.graph_pooling_type, args.neighbor_pooling_type, device, args.top_percentage).to(device)
     
     model.load_state_dict(torch.load('model_parameters.pth'))
     model.eval()
