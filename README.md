@@ -9,11 +9,21 @@
 - torch_geometric == 2.5.3
 
 - networkx == 3.2.1
+- scikit-learn
+- tqdm
+- scipy
 
 ## Quick Start
 
-```python
+To run the training script with default settings:
+
+```bash
 bash run.sh
+```
+If you want to try other datasets or models, simply modify the run.sh file. For example, you can change the variables inside the script:
+```
+dataset="PROTEINS"
+model="PairNorm"
 ```
 
 ## Datasets
