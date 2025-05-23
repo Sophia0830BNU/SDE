@@ -44,263 +44,139 @@ def get_adj(edge_mat):
         adj[dst, src] = 1 
     return adj 
 
-def normalize(mx):
-    rowsum = np.array(mx.sum(1))
-    r_inv = (1/rowsum).flatten()
-    r_inv[np.isinf(r_inv)] =0
-    r_mar_inv = diags(r_inv)
-    mx = r_mar_inv.dot(mx)
-    return mx
 
-### Laplacian maitrix
-def normalize_adj(mx):
-    rowsum = mx.sum(dim=1)
-    r_inv_sqrt = torch.pow(rowsum, -0.5)
-    r_inv_sqrt[torch.isinf(r_inv_sqrt)] = 0
-    r_mat_inv_sqrt = torch.diag(r_inv_sqrt)
-    mx_normalized = mx.matmul(r_mat_inv_sqrt).transpose(0, 1).matmul(r_mat_inv_sqrt)
-    return mx_normalized
 
-def js_kernel(V_p, V_q, H_p, H_q, lambda_param = 1.0):
+def entropy_k(adj, k):
+    """
+    Compute entropy for each node based on k-hop ego network.
     
-    weight_p = (2 * V_p - V_q) / (2 * V_p + 2 * V_q)
-    weight_q = (2 * V_q - V_p) / (2 * V_p + 2 * V_q)
-    weight_entropy = weight_p * H_p + weight_q * H_q
-    
-    k_js = torch.exp(-lambda_param*weight_entropy)
-    
-    return k_js
-    
+    Parameters:
+        adj (torch.Tensor): Adjacency matrix of shape [n_nodes, n_nodes]
+        k (int): Number of hops to include in ego-network (k >= 0)
 
-def entropy(adj):
-    
+    Returns:
+        torch.Tensor: Entropy score for each node [n_nodes]
+    """
     n_nodes = adj.size(0)
     node_entropy = torch.zeros(n_nodes)
-    node_numbers = torch.zeros(n_nodes)
-    #node_p = torch.zeros(n_nodes)
     
     for node in range(n_nodes):
-        neighbors_1st = torch.nonzero(adj[node]>0).squeeze(1)
-        
-        neighbors_2nd = torch.tensor([], dtype=torch.long)
-        # print(torch.tensor([node]))
-        for neighbor in neighbors_1st:
-            neighbors_2nd = torch.cat([neighbors_2nd, torch.nonzero(adj[neighbor] > 0).squeeze(1)])
-            
-        neighbors = torch.unique(torch.cat([torch.tensor([node]), neighbors_1st, neighbors_2nd]))
-        #subgraph_nodes = torch.cat((torch.tensor([node]), neighbors), dim=0) 
+       
+        neighbors = torch.tensor([node], dtype=torch.long)
 
-        node_numbers[node] = len(neighbors)
+        
+        frontier = torch.tensor([node], dtype=torch.long)
+        visited = set(frontier.tolist())
+        
+        for _ in range(k):
+            new_frontier = []
+            for n in frontier:
+                neighbors_n = torch.nonzero(adj[n] > 0).squeeze(1)
+                for nb in neighbors_n.tolist():
+                    if nb not in visited:
+                        visited.add(nb)
+                        new_frontier.append(nb)
+            if not new_frontier:
+                break
+            frontier = torch.tensor(new_frontier, dtype=torch.long)
+            neighbors = torch.unique(torch.cat([neighbors, frontier]))
+
         subgraph_nodes = neighbors
-        subgraph_degrees = adj[subgraph_nodes,:][:, subgraph_nodes].sum(dim=1)
+        subgraph_degrees = adj[subgraph_nodes, :][:, subgraph_nodes].sum(dim=1)
         total_degree = subgraph_degrees.sum()
-        
-        p = torch.clamp(subgraph_degrees/total_degree, min=1e-10)
-        entropy = -(p*p.log()).sum()
-        
-        #node_p[node] = p
-        node_entropy[node] = entropy
-        
-    
-    
-    # adj_js = torch.zeros((n_nodes,n_nodes))
-    
-    # for i in range(n_nodes):
-    #     for j in range(i, n_nodes):
-    #         if i == j:
-    #             adj_js[i, j] = 0
-    #         else:
-    #             adj_js[i, j] = js_kernel(node_numbers[i], node_numbers[j], node_entropy[i], node_entropy[j])
-    #             adj_js[j, i] = adj_js[i, j]
-                
-    # adj_sums = adj_js.sum(dim=1, keepdim=True)
-    # norm_adj_js = adj_js / (adj_sums + 1e-10)
 
-        
-    return node_entropy 
-
-
-
-def entropy_1(adj):
-    n_nodes = adj.size(0)
-    
-    # 只计算一阶邻居
-    neighbors_1st = [torch.nonzero(adj[node] > 0).squeeze(1) for node in range(n_nodes)]
-    
-    node_entropy = torch.zeros(n_nodes)
-    node_numbers = torch.zeros(n_nodes)
-    
-    for node in range(n_nodes):
-        # 只考虑节点和它的一阶邻居
-        neighbors = torch.unique(torch.cat([torch.tensor([node]), neighbors_1st[node]]))
-        
-        node_numbers[node] = len(neighbors)
-        
-        # 计算子图的度数
-        subgraph_degrees = adj[neighbors, :][:, neighbors].sum(dim=1)
-        total_degree = subgraph_degrees.sum()
-        
-        # 计算概率和熵
         p = torch.clamp(subgraph_degrees / total_degree, min=1e-10)
-        entropy = -(p * p.log()).sum()
-        
-        node_entropy[node] = entropy
+        node_entropy[node] = -(p * p.log()).sum()
     
-    return node_entropy 
-
-def entropy_2(adj):
-    n_nodes = adj.size(0)
-    node_entropy = torch.zeros(n_nodes)
-    node_numbers = torch.zeros(n_nodes)
-    #node_p = torch.zeros(n_nodes)
-    
-    for node in range(n_nodes):
-        neighbors_1st = torch.nonzero(adj[node]>0).squeeze(1)
-        
-        neighbors_2nd = torch.tensor([], dtype=torch.long)
-        # print(torch.tensor([node]))
-        for neighbor in neighbors_1st:
-            neighbors_2nd = torch.cat([neighbors_2nd, torch.nonzero(adj[neighbor] > 0).squeeze(1)])
-            
-        neighbors = torch.unique(torch.cat([torch.tensor([node]), neighbors_1st, neighbors_2nd]))
-        #subgraph_nodes = torch.cat((torch.tensor([node]), neighbors), dim=0) 
-
-        node_numbers[node] = len(neighbors)
-        subgraph_nodes = neighbors
-        subgraph_degrees = adj[subgraph_nodes,:][:, subgraph_nodes].sum(dim=1)
-        total_degree = subgraph_degrees.sum()
-        
-        p = torch.clamp(subgraph_degrees/total_degree, min=1e-10)
-        entropy = -(p*p.log()).sum()
-        
-        #node_p[node] = p
-        node_entropy[node] = entropy
-        
-    
-    
-    # adj_js = torch.zeros((n_nodes,n_nodes))
-    
-    # for i in range(n_nodes):
-    #     for j in range(i, n_nodes):
-            
-    #         if node_numbers[i] == 1 or node_numbers[j] == 1:
-    #             adj_js[i, j] = adj_js[j, i] = 0
-    #         else:
-    #             adj_js[i, j] = js_kernel(node_numbers[i], node_numbers[j], node_entropy[i], node_entropy[j])
-    #             adj_js[j, i] = adj_js[i, j]
-    #         # if torch.isnan(adj_js[i, j]):
-    #         #     print(node_numbers[i], node_numbers[j], node_entropy[i], node_entropy[j])
-    
-    # diag = torch.diag(adj_js) 
-    
-    # # if True in torch.isnan(adj_js):
-    # #     print(adj_js)
-    
-    # epsilon = 1e-12
-    # diag_sqrt = torch.sqrt(diag + epsilon)        
-    # normalize_factor = diag_sqrt.unsqueeze(0) * diag_sqrt.unsqueeze(1)
-    
-    # norm_adj_js = adj_js / normalize_factor
-    
-    # if True in torch.isnan(norm_adj_js):
-    #     print(norm_adj_js)
-    
-    
-    
-        
-    return node_entropy   
+    return node_entropy
 
 
-def entropy_k3(adj):
-    n_nodes = adj.size(0)
-    node_entropy = torch.zeros(n_nodes)
-    node_numbers = torch.zeros(n_nodes)
-    #node_p = torch.zeros(n_nodes)
+def compute_edge_trussness(graph):
+    """
+    Compute the trussness of each edge in the graph.
     
-    for node in range(n_nodes):
-        neighbors_1st = torch.nonzero(adj[node]>0).squeeze(1)
-        
-        neighbors_2nd = torch.tensor([], dtype=torch.long)
-        # print(torch.tensor([node]))
-        for neighbor in neighbors_1st:
-            neighbors_2nd = torch.cat([neighbors_2nd, torch.nonzero(adj[neighbor] > 0).squeeze(1)])
-            
-        
-        
-        neighbors_3rd = torch.tensor([], dtype=torch.long)
-        for neighbor in neighbors_2nd:
-            neighbors_3rd = torch.cat([neighbors_3rd, torch.nonzero(adj[neighbor] > 0).squeeze(1)])
-            
-        neighbors = torch.unique(torch.cat([torch.tensor([node]), neighbors_1st, neighbors_2nd]))
-        #subgraph_nodes = torch.cat((torch.tensor([node]), neighbors), dim=0) 
+    Parameters:
+        graph (nx.Graph): Input graph.
 
-        node_numbers[node] = len(neighbors)
-        subgraph_nodes = neighbors
-        subgraph_degrees = adj[subgraph_nodes,:][:, subgraph_nodes].sum(dim=1)
-        total_degree = subgraph_degrees.sum()
+    Returns:
+        nx.Graph: Graph with trussness added as edge attributes.
+    """
+    supg = {}
+
+   
+    for u, v in graph.edges():
+        common_neighbors = set(graph.neighbors(u)).intersection(set(graph.neighbors(v)))
+        supg[(u, v)] = len(common_neighbors)
+        supg[(v, u)] = len(common_neighbors)
+
+    
+    edges_sorted = sorted(graph.edges(), key=lambda e: supg[e])
+
+    k = 2
+    GT = graph.copy()
+
+    while edges_sorted:
+        for e in edges_sorted:
+            u, v = e
+            if supg[e] <= k - 2:
+                
+                common_neighbors = set(GT.neighbors(u)).intersection(set(GT.neighbors(v)))
+                for w in common_neighbors:
+                    supg[(u, w)] -= 1
+                    supg[(w, u)] -= 1
+                    supg[(v, w)] -= 1
+                    supg[(w, v)] -= 1
+
+                
+                GT[u][v]['trussness'] = k - 1
+                GT.remove_edge(u, v)
+
         
-        p = torch.clamp(subgraph_degrees/total_degree, min=1e-10)
-        entropy = -(p*p.log()).sum()
-        
-        #node_p[node] = p
-        node_entropy[node] = entropy
-        
+        edges_sorted = [e for e in edges_sorted if e in GT.edges()]
+        edges_sorted = sorted(edges_sorted, key=lambda e: supg[e])
+        if edges_sorted:
+            k += 1
+
+    return GT
+
+def TGS(graph, delta=3, eta=3):
+    """
+    Truss-based graph sparsification (TGS).
+
+    Parameters:
+        graph (nx.Graph): Input graph.
+        delta (float): Threshold for sparsification.
+        eta (int): Minimum trussness cutoff.
+
+    Returns:
+        nx.Graph: Sparsified graph.
+    """
     
-    
-    # adj_js = torch.zeros((n_nodes,n_nodes))
-    
-    # for i in range(n_nodes):
-    #     for j in range(i, n_nodes):
-            
-    #         if node_numbers[i] == 1 or node_numbers[j] == 1:
-    #             adj_js[i, j] = adj_js[j, i] = 0
-    #         else:
-    #             adj_js[i, j] = js_kernel(node_numbers[i], node_numbers[j], node_entropy[i], node_entropy[j])
-    #             adj_js[j, i] = adj_js[i, j]
-    #         # if torch.isnan(adj_js[i, j]):
-    #         #     print(node_numbers[i], node_numbers[j], node_entropy[i], node_entropy[j])
-    
-    # diag = torch.diag(adj_js) 
-    
-    # # if True in torch.isnan(adj_js):
-    # #     print(adj_js)
-    
-    # epsilon = 1e-12
-    # diag_sqrt = torch.sqrt(diag + epsilon)        
-    # normalize_factor = diag_sqrt.unsqueeze(0) * diag_sqrt.unsqueeze(1)
-    
-    # norm_adj_js = adj_js / normalize_factor
-    
-    # if True in torch.isnan(norm_adj_js):
-    #     print(norm_adj_js)
-    
-    
-    
-        
-    return node_entropy     
-        
+    GT = compute_edge_trussness(graph)
 
 
+    EH = [(u, v, data['trussness']) for u, v, data in GT.edges(data=True) if data['trussness'] >= eta]
+    EH = sorted(EH, key=lambda x: x[2], reverse=True)
 
-def get_adj_entropy(adj, node_entropy):
-    
-    n = adj.size(0)
-    adj_e = np.zeros((n, n))
-    
-    for i in range(n):
-        for j in range(i+1, n):
-            diff_entropy = abs(node_entropy[i] - node_entropy[j]) / min(node_entropy[i], node_entropy[j])
-            adj_e[i, j] = diff_entropy
-            adj_e[j, i] = diff_entropy
-    
-    return adj_e
+    GS = GT.copy()
+    for u, v, t_value in EH:
+        
+        Tu = sum([GT[u][n]['trussness'] for n in GS.neighbors(u)]) / len(set(GS.neighbors(u)))
+        Tv = sum([GT[v][n]['trussness'] for n in GS.neighbors(v)]) / len(set(GS.neighbors(v)))
+        TN_E = min(Tu, Tv)
+        if TN_E >= delta:
+            GS.remove_edge(u, v)
+            GS = compute_edge_trussness(GS)
+
+    return GS  
 
 
-def load_data(dataset, degree_as_tag):
+def load_data(dataset, degree_as_tag, Truss_process=False, Entropy_process=False, k=1):
     '''
         dataset: name of dataset
-        test_proportion: ratio of test train split
-        seed: random seed for random splitting of dataset
+        degree_as_tag: the datasets using degree as node label
+        Truss_process: Truss-based Process
+        Entropy_process: compute the entropy of expansion subgraph
     '''
 
     print("loading data")
@@ -372,23 +248,21 @@ def load_data(dataset, degree_as_tag):
             
             edges.extend([[i, j] for j, i in edges])
             graph.edge_mat = torch.LongTensor(edges).transpose(0, 1)
-            adj = get_adj(graph.edge_mat)
-            #graph.node_entropy, graph.adj_js = entropy_k3(adj)
-            graph.node_entropy = entropy_1(adj)
-            # graph.row_sum = graph.adj_js.sum(dim=1)
-            # #print(graph.row_sum.shape)
             
-            # graph.entropy_adj = get_adj_entropy(adj,graph.node_entropy)
-            # self_loop = torch.diag(torch.ones_like(adj[:, 0]))
-            # adj_loop = adj + self_loop
-            # adj_lap = normalize_adj(adj_loop)
-            # graph.adj_lap = adj_lap
+            if Entropy_process == True:
+                adj = get_adj(graph.edge_mat)
+                graph.node_entropy = entropy_k(adj, k)
+                
+            if Truss_process == True:
+                Gs = TGS(graph.g)
+                graph.g = Gs    
+
+        
         if degree_as_tag:
             for g in g_list:
                 g.node_tags = list(dict(g.g.degree(range(len(g.g)))).values())
-                #print(g.node_tags)
 
-        # Extracting unique tag labels 
+
                 
         tagset = set([])
         for g in g_list:

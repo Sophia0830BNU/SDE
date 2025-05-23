@@ -10,7 +10,7 @@ from mlp import MLP
 # original gin
 
 class GraphCNN(nn.Module):
-    def __init__(self, num_layers, num_mlp_layers, input_dim, hidden_dim, output_dim, final_dropout, learn_eps, graph_pooling_type, neighbor_pooling_type, device):
+    def __init__(self, model_name, num_layers, num_mlp_layers, input_dim, hidden_dim, output_dim, final_dropout, learn_eps, graph_pooling_type, neighbor_pooling_type, device, top_percentage):
         '''
             num_layers: number of layers in the neural networks (INCLUDING the input layer)
             num_mlp_layers: number of layers in mlps (EXCLUDING the input layer)
@@ -25,6 +25,8 @@ class GraphCNN(nn.Module):
         '''
 
         super(GraphCNN, self).__init__()
+        
+        self.model_name = model_name
 
         self.final_dropout = final_dropout
         self.device = device
@@ -33,6 +35,8 @@ class GraphCNN(nn.Module):
         self.neighbor_pooling_type = neighbor_pooling_type
         self.learn_eps = learn_eps
         self.eps = nn.Parameter(torch.zeros(self.num_layers-1))
+        
+        self.top_percentage  = top_percentage
 
         ###List of MLPs
         self.mlps = torch.nn.ModuleList()
@@ -193,22 +197,74 @@ class GraphCNN(nn.Module):
         #non-linearity
         h = F.relu(h)
         return h
+    
+    def CtoD(self, h, node_entropy):
+       
+        top_percentage = self.top_percentage
+        sorted_degrees, sorted_indices = torch.sort(node_entropy, descending=False)
+        n_top_nodes = int(len(node_entropy) * top_percentage)
+        top_nodes_indices = sorted_indices[:n_top_nodes]
+        
+        h_discrete = torch.zeros_like(h).to(self.device)
+        h_discrete[top_nodes_indices] = F.gumbel_softmax(F.softmax(h[top_nodes_indices], dim=1), dim=1, tau=0.6)
+        h_discrete[~top_nodes_indices] = h[~top_nodes_indices]
+        
+        return h_discrete
+    
+    def pairnorm(self, X, s=0.0005):
+        n, d =  X.shape
+        X_mean = torch.mean(X, dim=0)
+        X_c = X - X_mean
+        X_norm_squared = torch.norm(X_c, p='fro')**2  # Frobenius norm squared
+        X_scaled = s * torch.sqrt(torch.tensor(n)) * (X_c / torch.sqrt(X_norm_squared))
+        return X_scaled
+    
+    def ContraNorm(self, h):
+        
+        h = (1+0.02) * h - 0.02 * torch.matmul(torch.softmax(torch.matmul(h, h.T), dim=1), h)
+        
+        return h
+    
+    def dropedge(self, adj, drop_rate=0.1):
+        
+        indices = adj._indices()
+        values = adj._values()
+        
+        num_edges = values.size(0)
+        num_drop = int(num_edges*drop_rate)
+        
+        perm = torch.randperm(num_edges)
+        
+        keep_indices = perm[num_drop:]
+        
+        new_indices = indices[:,keep_indices]
+        new_values = values[keep_indices]
+        
+        new_adj = torch.sparse.FloatTensor(new_indices, new_values, adj.size()).to(self.device)
+        
+        return new_adj
 
 
     def forward(self, batch_graph):
         X_concat = torch.cat([graph.node_features for graph in batch_graph], 0).to(self.device)
+        if self.model_name == "SDE":
+            node_entropy = torch.cat([graph.node_entropy for graph in batch_graph], 0).to(self.device)
+            
         graph_pool = self.__preprocess_graphpool(batch_graph)
 
         if self.neighbor_pooling_type == "max":
             padded_neighbor_list = self.__preprocess_neighbors_maxpool(batch_graph)
         else:
             Adj_block = self.__preprocess_neighbors_sumavepool(batch_graph)
+            if self.model_name == "DropEdge":
+                Adj_block = self.dropedge(Adj_block)
 
         #list of hidden representation at each layer (including input)
         hidden_rep = [X_concat]
         h = X_concat
 
         for layer in range(self.num_layers-1):
+            h_ori = h
             if self.neighbor_pooling_type == "max" and self.learn_eps:
                 h = self.next_layer_eps(h, layer, padded_neighbor_list = padded_neighbor_list)
             elif not self.neighbor_pooling_type == "max" and self.learn_eps:
@@ -219,6 +275,24 @@ class GraphCNN(nn.Module):
                 h = self.next_layer(h, layer, Adj_block = Adj_block)
             #h = F.gumbel_softmax(h)
             hidden_rep.append(h)
+            
+            if self.model_name == "SDE":
+                h = self.CtoD(h, node_entropy)
+
+            elif self.model_name == "ResNet":
+                if layer != 0:
+                    h = h + h_ori
+                    
+            elif self.model_name == "PairNorm":
+                h = self.pairnorm(h)
+                
+            elif self.model_name == "ContraNorm":
+                h = self.ContraNorm(h)
+            else:
+                h = h
+            
+                
+        
 
         score_over_layer = 0
     
