@@ -13,7 +13,7 @@
 - tqdm
 - scipy
 
-## Quick Start
+## 🔍 Quick Start
 
 To run the training script with default settings:
 
@@ -26,10 +26,22 @@ dataset="PROTEINS"
 model="PairNorm"
 ```
 
-## Datasets
+
+## 🔍 Compute Node-wise JSD
+
+To compute the Jensen-Shannon Divergence (JSD) between nodes:
+
+1. First, make sure the model parameters are saved after training as `model_parameters.pth`.
+2. Then, run the following command:
+
+```bash
+bash run_jsd.sh
+```
+
+## 🔍 Datasets
  Datasets can be download from https://chrsmrrs.github.io/datasets/
 
-## Citing
+## 🔍 Citing
 
 If you find this work is helpful to your research, please consider citing our paper:
 ```bibtex
