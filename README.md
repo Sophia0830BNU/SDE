@@ -2,7 +2,7 @@
 
 <img src=".\Framework.png">  
 
-## Dependencies
+## 🔍 Dependencies
 
 - Pytorch == 2.4.1 
 
