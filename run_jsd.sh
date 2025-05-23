@@ -1,7 +1,7 @@
 #!/bin/bash
 
 dataset="MUTAG"
-model="PairNorm"
+model="SDE"
 log_file="${dataset}_${model}_jsd.txt"
 
 nohup python3 -u cal_JSD.py \
