@@ -31,6 +31,20 @@ model="PairNorm"
 
 ## Citing
 
-If you find this work is helpful to your research, please consider citing our paper
+If you find this work is helpful to your research, please consider citing our paper:
+```bibtex
+@inproceedings{QianSDE,
+  author       = {Feifei Qian and
+                  Lu Bai and
+                  Lixin Cui and
+                  Ming Li and
+                  Hangyuan Du and
+                  Yue Wang and
+                  Edwin R. Hancock},
+  title        = {Exploring the Over-smoothing Problem of Graph Neural Networks for Graph Classification: An Entropy-based Viewpoint},
+  booktitle    = {Proceedings of IJCAI},
+  year         = {2025}
+}
+```
 
 
